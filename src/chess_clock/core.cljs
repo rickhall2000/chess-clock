@@ -15,6 +15,27 @@
       {:min (dec min) :sec 59}
       {:min min :sec (dec sec)})))
 
+(defn counter [clock control]
+  (let [out (chan)
+        clock-state (cycle [:off :on])]
+    (go
+     (loop [time-left clock clock-state clock-state]
+       (let t (timeout 1000)
+           [v c] (alts! [t control]
+                         (cond
+                          (and (= (first clock-state) :on)
+                               (= c t))
+                          (recur (minus-sec time-left) clock-state)
+                          (and (= (first clock-state) :off)
+                               (= c control)
+                               (= v :start))
+                          (recur time-left (rest a))
+                          (and (= c control)
+                               (= c :end))
+                          (.log js/console "time at end: " time-left)
+                          :else (recur time-left clock-state))))))
+    out))
+
 (defn time->string [time]
   (let [min (:min time)
         sec  (subs (str (:sec time) "0") 0 2)]
