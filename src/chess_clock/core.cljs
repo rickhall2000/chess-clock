@@ -1,6 +1,8 @@
 (ns chess-clock.core
+  (:require-macros [cljs.core.async.macros :refer [go]])
   (:require [om.core :as om :include-macros true]
-            [om.dom :as dom :include-macros true]))
+            [om.dom :as dom :include-macros true]
+            [cljs.core.async :refer [chan >! <! alts! timeout]]))
 
 (enable-console-print!)
 
@@ -20,20 +22,20 @@
         clock-state (cycle [:off :on])]
     (go
      (loop [time-left clock clock-state clock-state]
-       (let t (timeout 1000)
-           [v c] (alts! [t control]
-                         (cond
-                          (and (= (first clock-state) :on)
-                               (= c t))
-                          (recur (minus-sec time-left) clock-state)
-                          (and (= (first clock-state) :off)
-                               (= c control)
-                               (= v :start))
-                          (recur time-left (rest a))
-                          (and (= c control)
-                               (= c :end))
-                          (.log js/console "time at end: " time-left)
-                          :else (recur time-left clock-state))))))
+       (let [t (timeout 1000)
+             [v c] (alts! [t control])
+             (cond
+              (and (= (first clock-state) :on)
+                   (= c t))
+              (recur (minus-sec time-left) clock-state)
+              (and (= (first clock-state) :off)
+                   (= c control)
+                   (= v :start))
+              (recur time-left (rest clock-state))
+              (and (= c control)
+                   (= c :end))
+              (.log js/console "time at end: " time-left)
+              :else (recur time-left clock-state))])))
     out))
 
 (defn time->string [time]
