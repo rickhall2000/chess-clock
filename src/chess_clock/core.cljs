@@ -17,31 +17,55 @@
       {:min (dec min) :sec 59}
       {:min min :sec (dec sec)})))
 
+
 (defn counter [clock control]
   (let [out (chan)
         clock-state (cycle [:off :on])]
+    (.log js/console "about to loop")
     (go
      (loop [time-left clock clock-state clock-state]
-       (let [t (timeout 1000)
-             [v c] (alts! [t control])
-             (cond
-              (and (= (first clock-state) :on)
-                   (= c t))
-              (recur (minus-sec time-left) clock-state)
-              (and (= (first clock-state) :off)
-                   (= c control)
-                   (= v :start))
-              (recur time-left (rest clock-state))
-              (and (= c control)
-                   (= c :end))
-              (.log js/console "time at end: " time-left)
-              :else (recur time-left clock-state))])))
+       (do
+         (let [t (timeout 1000)
+               [v c] (alts! [t control])]
+           (cond
+            (and (= (first clock-state) :on)
+                 (= c t))
+            (do
+              (>! out time-left)
+              (recur (minus-sec time-left) clock-state))
+            (and (= (first clock-state) :off)
+                 (= c control)
+                 (= v :start))
+            (do
+              (.log js/console "starting up")
+              (recur time-left (next clock-state)))
+            (and (= c control)
+                 (= c :end))
+            (.log js/console "time at end: " time-left)
+            :else
+            (recur time-left clock-state))))))
     out))
+
 
 (defn time->string [time]
   (let [min (:min time)
         sec  (subs (str (:sec time) "0") 0 2)]
     (str min ":" sec)))
+
+(defn clock-builder []
+  (let [control (chan)
+        clock (counter {:min 2 :sec 30} control)]
+    (go
+     (>! control :start)
+     (loop []
+       (let [time (<! clock)]
+         (.log js/console (time->string time))
+         (if  (< (:min time) 2)
+           (>! control :end)
+           (recur)))))))
+
+(clock-builder)
+
 
 (defn draw-clock [app owner]
   (reify
