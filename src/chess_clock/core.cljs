@@ -54,40 +54,31 @@
          :black-clock {:time {:min 2 :sec 30}
                        :tag :black}}))
 
-#_(defn switch-clock [msg]
-  (let [wc (:control (:white-clock @app-state))
-        bc (:control (:black-clock @app-state))]
-    (.log js/console msg)
-    (go
-     (cond
-      (= msg :white)
-      (do
-        (>! wc :stop)
-        (>! bc :start))
-      (= msg :black)
-      (do
-        (>! wc :start)
-        (>! bc :stop))
-      (= msg :end)
-      (do
-        (>! wc :end)
-        (>! bc :end))))))
+(defn switch-clock [msg wc bc]
+  (go
+   (cond
+    (= msg :white)
+    (do
+      (>! wc :stop)
+      (>! bc :start))
+    (= msg :black)
+    (do
+      (>! wc :start)
+      (>! bc :stop))
+    (= msg :end)
+    (do
+      (>! wc :end)
+      (>! bc :end)))))
 
 (defn clock-view [app owner]
   (reify
-    om/IWillMount
-    (will-mount [_]
-      (let [control (om/get-state owner :control)]
-        (go (loop []
-              (let [msg (<! control)]
-                (.log js/console msg))))))
     om/IRenderState
-    (render-state [this {:keys [control]}]
+    (render-state [this {:keys [master]}]
       (let [tag (:tag app)]
         (dom/div #js {:className "clock"}
                  (dom/h2 nil (time->string (:time app)))
                  (dom/button #js {:onClick
-                                  (fn [e] (put! control tag))} "Move"))))))
+                                  (fn [e] (put! master tag))} "Move"))))))
 
 (defn board-view [app owner]
   (reify
@@ -98,9 +89,15 @@
        :main-control (chan)})
     om/IWillMount
     (will-mount [_]
-      (let [mc (om/get-state owner :main-control)]
+      (let [mc (om/get-state owner :main-control)
+            wc (om/get-state owner :white-control)
+            bc (om/get-state owner :black-control)]
         (go (loop []
               (let [tag (<! mc)]
+                (switch-clock tag wc bc)
+                (recur))))
+        (go (loop []
+              (let [tag (<! wc)]
                 (.log js/console tag)
                 (recur))))))
     om/IRenderState
@@ -108,12 +105,12 @@
       (dom/div nil
                (dom/h2 nil "Chess Clocks")
                (dom/button #js {:onClick
-                                (fn [e] (put! main-control "main"))}
+                                (fn [e] (put! main-control :end))}
                            "End Game")
                (om/build clock-view (:white-clock app)
-                         {:init-state {:control white-control}})
+                         {:init-state {:master main-control}})
                (om/build clock-view (:black-clock app)
-                         {:init-state {:control black-control}})))))
+                         {:init-state {:master main-control}})))))
 
 (om/root
   board-view
