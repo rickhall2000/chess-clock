@@ -18,20 +18,19 @@
         sec  (subs (str (:sec time) "0") 0 2)]
     (str min ":" sec)))
 
-#_(defn counter [app control]
+(defn counter [app control]
   (let [clock-state (cycle [:off :on])
-        ;control (:control app)
-        time-left (:time app)]
+        start-time (:time app)]
     (go
-     (loop [time-left time-left clock-state clock-state]
+     (loop [time-left (:time @app) clock-state clock-state]
        (do
          (let [t (timeout 1000)
-               [v c] (alts! [t #_control])]
+               [v c] (alts! [t control])]
            (cond
             (and (= (first clock-state) :on)
                  (= c t))
             (do
-              (om/transact! app :time (fn [_] time-left))
+              (om/update! app [:time] time-left)
               (recur (minus-sec time-left) clock-state))
             (and (= (first clock-state) :off)
                  (= c control)
@@ -43,7 +42,7 @@
             (do
               (recur time-left (next clock-state)))
             (and (= c control)
-                 (= c :end))
+                 (= v :end))
             (.log js/console "time at end: " time-left)
             :else
             (recur time-left clock-state))))))))
@@ -70,10 +69,15 @@
       (>! wc :end)
       (>! bc :end)))))
 
+;; should I move the counter
 (defn clock-view [app owner]
   (reify
+    om/IWillMount
+    (will-mount [_]
+      (let [input (om/get-state owner :input)
+            ctrl (counter app input)]))
     om/IRenderState
-    (render-state [this {:keys [master]}]
+    (render-state [this {:keys [master input]}]
       (let [tag (:tag app)]
         (dom/div #js {:className "clock"}
                  (dom/h2 nil (time->string (:time app)))
@@ -95,10 +99,6 @@
         (go (loop []
               (let [tag (<! mc)]
                 (switch-clock tag wc bc)
-                (recur))))
-        (go (loop []
-              (let [tag (<! wc)]
-                (.log js/console tag)
                 (recur))))))
     om/IRenderState
     (render-state [this {:keys [white-control black-control main-control]}]
@@ -108,9 +108,11 @@
                                 (fn [e] (put! main-control :end))}
                            "End Game")
                (om/build clock-view (:white-clock app)
-                         {:init-state {:master main-control}})
+                         {:init-state {:master main-control
+                                       :input white-control}})
                (om/build clock-view (:black-clock app)
-                         {:init-state {:master main-control}})))))
+                         {:init-state {:master main-control
+                                       :input black-control}})))))
 
 (om/root
   board-view
