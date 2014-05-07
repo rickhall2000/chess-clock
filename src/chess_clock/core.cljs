@@ -18,15 +18,15 @@
         sec  (subs (str (:sec time) "0") 0 2)]
     (str min ":" sec)))
 
-(defn counter [app]
+#_(defn counter [app control]
   (let [clock-state (cycle [:off :on])
-        control (:control app)
+        ;control (:control app)
         time-left (:time app)]
     (go
      (loop [time-left time-left clock-state clock-state]
        (do
          (let [t (timeout 1000)
-               [v c] (alts! [t control])]
+               [v c] (alts! [t #_control])]
            (cond
             (and (= (first clock-state) :on)
                  (= c t))
@@ -49,14 +49,12 @@
             (recur time-left clock-state))))))))
 
 (def app-state
-  (atom {:white-clock {:control (chan)
-                       :time {:min 2 :sec 30}
+  (atom {:white-clock {:time {:min 2 :sec 30}
                        :tag :white}
-         :black-clock {:control (chan)
-                       :time {:min 2 :sec 30}
+         :black-clock {:time {:min 2 :sec 30}
                        :tag :black}}))
 
-(defn switch-clock [msg]
+#_(defn switch-clock [msg]
   (let [wc (:control (:white-clock @app-state))
         bc (:control (:black-clock @app-state))]
     (.log js/console msg)
@@ -75,30 +73,49 @@
         (>! wc :end)
         (>! bc :end))))))
 
-(defn draw-clock [app owner]
+(defn clock-view [app owner]
   (reify
-    om/IInitState
-    (init-state [_]
-      {:counter (counter app)})
+    om/IWillMount
+    (will-mount [_]
+      (let [control (om/get-state owner :control)]
+        (go (loop []
+              (let [msg (<! control)]
+                (.log js/console msg))))))
     om/IRenderState
-    (render-state [this state]
+    (render-state [this {:keys [control]}]
       (let [tag (:tag app)]
         (dom/div #js {:className "clock"}
                  (dom/h2 nil (time->string (:time app)))
                  (dom/button #js {:onClick
-                                  (fn [e] (switch-clock tag))} "Move"))))))
+                                  (fn [e] (put! control tag))} "Move"))))))
 
-(defn draw-board [app owner]
+(defn board-view [app owner]
   (reify
-    om/IRender
-    (render [this]
+    om/IInitState
+    (init-state [_]
+      {:white-control (chan)
+       :black-control (chan)
+       :main-control (chan)})
+    om/IWillMount
+    (will-mount [_]
+      (let [mc (om/get-state owner :main-control)]
+        (go (loop []
+              (let [tag (<! mc)]
+                (.log js/console tag)
+                (recur))))))
+    om/IRenderState
+    (render-state [this {:keys [white-control black-control main-control]}]
       (dom/div nil
-               (dom/h2 nil (:text app))
-               (dom/button #js {:onClick (fn [e] (switch-clock :end))} "End Game")
-               (om/build draw-clock (:white-clock app))
-               (om/build draw-clock (:black-clock app))))))
+               (dom/h2 nil "Chess Clocks")
+               (dom/button #js {:onClick
+                                (fn [e] (put! main-control "main"))}
+                           "End Game")
+               (om/build clock-view (:white-clock app)
+                         {:init-state {:control white-control}})
+               (om/build clock-view (:black-clock app)
+                         {:init-state {:control black-control}})))))
 
 (om/root
-  draw-board
+  board-view
   app-state
   {:target (. js/document (getElementById "app"))})
