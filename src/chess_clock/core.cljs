@@ -87,7 +87,7 @@
       (let [tag (:tag app)]
         (dom/div #js {:className "clock"}
                  (dom/h3 nil (str "Player " (name tag)))
-                 (dom/h2 #js {:className "clockface"} (time->string (:time app)))
+                 (dom/h3 #js {:className "clockface"} (time->string (:time app)))
                  (dom/button #js {:onClick
                                   (fn [e] (put! master tag))} "Move"))))))
 
@@ -120,14 +120,15 @@
                (dom/button #js {:onClick
                                 (fn [e] (put! main-control :end))}
                            "End Game")
-               (om/build clock-view (:white-clock app)
-                         {:init-state {:master main-control
-                                       :input white-control
-                                       :msg-chan message}})
-               (om/build clock-view (:black-clock app)
-                         {:init-state {:master main-control
-                                       :input black-control
-                                       :msg-chan message}})))))
+               (dom/div #js {:className "clocks"}
+                        (om/build clock-view (:white-clock app)
+                                  {:init-state {:master main-control
+                                                :input white-control
+                                                :msg-chan message}})
+                        (om/build clock-view (:black-clock app)
+                                  {:init-state {:master main-control
+                                                :input black-control
+                                                :msg-chan message}}))))))
 
 (om/root
   board-view

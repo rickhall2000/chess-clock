@@ -1,8 +1,31 @@
 #app {
     background-color: black;
     color: silver;
+    width: 544px;
+    padding: 2px;
+}
+
+.message {
+    color: white;
+}
+
+.clocks {
+    margin-top: 10px;
+    width: 100pct;
 }
 
 .clock {
     color: white;
+    padding: 10px;
+    border-width: 1px;
+    border-style: solid;
+    border-color: white;
+    width: 250px;
+    float: left;
+    background-color: black;
+}
+
+.clockface {
+    color: lime;
+    font-size: 32pt;
 }
