@@ -18,7 +18,7 @@
         sec  (subs (str (:sec time) "0") 0 2)]
     (str min ":" sec)))
 
-(defn counter [app control]
+(defn counter [app control msg-chan]
   (let [clock-state (cycle [:off :on])
         start-time (:time app)]
     (go
@@ -35,12 +35,13 @@
             (and (= (first clock-state) :off)
                  (= c control)
                  (= v :start))
-            (recur time-left (next clock-state))
+            (do
+              (put! msg-chan (str (name (:tag @app)) " to move"))
+              (recur time-left (next clock-state)))
             (and (= (first clock-state) :on)
                  (= c control)
                  (= v :stop))
-            (do
-              (recur time-left (next clock-state)))
+            (recur time-left (next clock-state))
             (and (= c control)
                  (= v :end))
             (.log js/console "time at end: " time-left)
@@ -51,36 +52,42 @@
   (atom {:white-clock {:time {:min 2 :sec 30}
                        :tag :white}
          :black-clock {:time {:min 2 :sec 30}
-                       :tag :black}}))
+                       :tag :black}
+         :msg "Ready"}))
 
-(defn switch-clock [msg wc bc]
+(defn new-msg [app msg]
+  (om/update! app [:msg] msg))
+
+(defn switch-clock [tag wc bc msgchan]
   (go
    (cond
-    (= msg :white)
+    (= tag :white)
     (do
       (>! wc :stop)
       (>! bc :start))
-    (= msg :black)
+    (= tag :black)
     (do
       (>! wc :start)
       (>! bc :stop))
-    (= msg :end)
+    (= tag :end)
     (do
       (>! wc :end)
-      (>! bc :end)))))
+      (>! bc :end)
+      (>! msgchan "Game over")))))
 
-;; should I move the counter
 (defn clock-view [app owner]
   (reify
     om/IWillMount
     (will-mount [_]
       (let [input (om/get-state owner :input)
-            ctrl (counter app input)]))
+            msg-chan (om/get-state owner :msg-chan)
+            ctrl (counter app input msg-chan)]))
     om/IRenderState
     (render-state [this {:keys [master input]}]
       (let [tag (:tag app)]
         (dom/div #js {:className "clock"}
-                 (dom/h2 nil (time->string (:time app)))
+                 (dom/h3 nil (str "Player " (name tag)))
+                 (dom/h2 #js {:className "clockface"} (time->string (:time app)))
                  (dom/button #js {:onClick
                                   (fn [e] (put! master tag))} "Move"))))))
 
@@ -90,31 +97,44 @@
     (init-state [_]
       {:white-control (chan)
        :black-control (chan)
-       :main-control (chan)})
+       :message (chan)})
     om/IWillMount
     (will-mount [_]
-      (let [mc (om/get-state owner :main-control)
+      (let [main (om/get-state owner :main-control)
+            message (om/get-state owner :message)
             wc (om/get-state owner :white-control)
             bc (om/get-state owner :black-control)]
         (go (loop []
-              (let [tag (<! mc)]
-                (switch-clock tag wc bc)
+              (let [tag (<! main)]
+                (switch-clock tag wc bc message)
+                (recur))))
+        (go (loop []
+              (let [msg (<! message)]
+                (om/update! app [:msg] msg)
                 (recur))))))
     om/IRenderState
-    (render-state [this {:keys [white-control black-control main-control]}]
+    (render-state [this {:keys [white-control black-control main-control message]}]
       (dom/div nil
-               (dom/h2 nil "Chess Clocks")
+               (dom/h2 #js {:className "header"} "Chess Clocks")
+               (dom/h3 #js {:className "message"} (:msg app))
                (dom/button #js {:onClick
                                 (fn [e] (put! main-control :end))}
                            "End Game")
                (om/build clock-view (:white-clock app)
                          {:init-state {:master main-control
-                                       :input white-control}})
+                                       :input white-control
+                                       :msg-chan message}})
                (om/build clock-view (:black-clock app)
                          {:init-state {:master main-control
-                                       :input black-control}})))))
+                                       :input black-control
+                                       :msg-chan message}})))))
 
 (om/root
   board-view
   app-state
-  {:target (. js/document (getElementById "app"))})
+  (let [main (chan)]
+    {:target (. js/document (getElementById "app"))
+     :init-state {:main-control main}
+     :tx-listen (fn [update new-state]
+                  (when (= (:new-value update) {:min 0 :sec 0})
+                   (put! main :end)))}))
