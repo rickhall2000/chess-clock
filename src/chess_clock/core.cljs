@@ -23,7 +23,7 @@
                        :tag :black}
          :msg "Ready"}))
 
-(defn counter [app control msg-chan]
+(defn counter [app control]
   (go
    (loop [clock-state (cycle [:off :on])]
      (do
@@ -38,16 +38,14 @@
           (and (= (first clock-state) :off)
                (= c control)
                (= v :start))
-          (do
-            (put! msg-chan (str (name (:tag @app)) " to move"))
-            (recur (next clock-state)))
+          (recur (next clock-state))
           (and (= (first clock-state) :on)
                (= c control)
                (= v :stop))
           (recur (next clock-state))
           (and (= c control)
                (= v :end))
-          (.log js/console "time at end: " time-left)
+          (.log js/console "game over")
           :else
           (recur clock-state)))))))
 
@@ -57,11 +55,13 @@
     (= tag :white)
     (do
       (>! wc :stop)
-      (>! bc :start))
+      (>! bc :start)
+      (>! msgchan "Black to move"))
     (= tag :black)
     (do
       (>! wc :start)
-      (>! bc :stop))
+      (>! bc :stop)
+      (>! msgchan "White to move"))
     (= tag :end)
     (do
       (>! wc :end)
@@ -73,8 +73,7 @@
     om/IWillMount
     (will-mount [_]
       (let [input (om/get-state owner :input)
-            msg-chan (om/get-state owner :msg-chan)
-            ctrl (counter app input msg-chan)]))
+            ctrl (counter app input)]))
     om/IRenderState
     (render-state [this {:keys [master]}]
       (let [tag (:tag app)]
