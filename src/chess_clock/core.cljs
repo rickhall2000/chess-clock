@@ -25,8 +25,7 @@
 
 (defn counter [app control msg-chan]
   (go
-   (loop [time-left (:time @app)
-          clock-state (cycle [:off :on])]
+   (loop [clock-state (cycle [:off :on])]
      (do
        (let [t (timeout 1000)
              [v c] (alts! [t control])]
@@ -34,23 +33,23 @@
           (and (= (first clock-state) :on)
                (= c t))
           (do
-            (om/update! app [:time] time-left)
-            (recur (minus-sec time-left) clock-state))
+            (om/transact! app :time minus-sec)
+            (recur clock-state))
           (and (= (first clock-state) :off)
                (= c control)
                (= v :start))
           (do
             (put! msg-chan (str (name (:tag @app)) " to move"))
-            (recur time-left (next clock-state)))
+            (recur (next clock-state)))
           (and (= (first clock-state) :on)
                (= c control)
                (= v :stop))
-          (recur time-left (next clock-state))
+          (recur (next clock-state))
           (and (= c control)
                (= v :end))
           (.log js/console "time at end: " time-left)
           :else
-          (recur time-left clock-state)))))))
+          (recur clock-state)))))))
 
 (defn switch-clock [tag wc bc msgchan]
   (go
