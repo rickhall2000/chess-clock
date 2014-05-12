@@ -4,8 +4,6 @@
             [om.dom :as dom :include-macros true]
             [cljs.core.async :refer [chan >! <! alts! timeout put!]]))
 
-(enable-console-print!)
-
 (defn minus-sec [time]
   (let [min (:min time)
         sec (:sec time)]
@@ -15,38 +13,8 @@
 
 (defn time->string [time]
   (let [min (:min time)
-        sec  (subs (str (:sec time) "0") 0 2)]
-    (str min ":" sec)))
-
-(defn counter [app control msg-chan]
-  (let [clock-state (cycle [:off :on])
-        start-time (:time app)]
-    (go
-     (loop [time-left (:time @app) clock-state clock-state]
-       (do
-         (let [t (timeout 1000)
-               [v c] (alts! [t control])]
-           (cond
-            (and (= (first clock-state) :on)
-                 (= c t))
-            (do
-              (om/update! app [:time] time-left)
-              (recur (minus-sec time-left) clock-state))
-            (and (= (first clock-state) :off)
-                 (= c control)
-                 (= v :start))
-            (do
-              (put! msg-chan (str (name (:tag @app)) " to move"))
-              (recur time-left (next clock-state)))
-            (and (= (first clock-state) :on)
-                 (= c control)
-                 (= v :stop))
-            (recur time-left (next clock-state))
-            (and (= c control)
-                 (= v :end))
-            (.log js/console "time at end: " time-left)
-            :else
-            (recur time-left clock-state))))))))
+        sec (:sec time)]
+    (str min ":" (when (< sec 10) "0")  sec)))
 
 (def app-state
   (atom {:white-clock {:time {:min 2 :sec 30}
@@ -55,8 +23,34 @@
                        :tag :black}
          :msg "Ready"}))
 
-(defn new-msg [app msg]
-  (om/update! app [:msg] msg))
+(defn counter [app control msg-chan]
+  (go
+   (loop [time-left (:time @app)
+          clock-state (cycle [:off :on])]
+     (do
+       (let [t (timeout 1000)
+             [v c] (alts! [t control])]
+         (cond
+          (and (= (first clock-state) :on)
+               (= c t))
+          (do
+            (om/update! app [:time] time-left)
+            (recur (minus-sec time-left) clock-state))
+          (and (= (first clock-state) :off)
+               (= c control)
+               (= v :start))
+          (do
+            (put! msg-chan (str (name (:tag @app)) " to move"))
+            (recur time-left (next clock-state)))
+          (and (= (first clock-state) :on)
+               (= c control)
+               (= v :stop))
+          (recur time-left (next clock-state))
+          (and (= c control)
+               (= v :end))
+          (.log js/console "time at end: " time-left)
+          :else
+          (recur time-left clock-state)))))))
 
 (defn switch-clock [tag wc bc msgchan]
   (go
@@ -83,7 +77,7 @@
             msg-chan (om/get-state owner :msg-chan)
             ctrl (counter app input msg-chan)]))
     om/IRenderState
-    (render-state [this {:keys [master input]}]
+    (render-state [this {:keys [master]}]
       (let [tag (:tag app)]
         (dom/div #js {:className "clock"}
                  (dom/h3 nil (str "Player " (name tag)))
