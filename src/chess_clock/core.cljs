@@ -115,12 +115,10 @@
                (dom/div #js {:className "clocks"}
                         (om/build clock-view (:white-clock app)
                                   {:init-state {:master main-control
-                                                :input white-control
-                                                :msg-chan message}})
+                                                :input white-control}})
                         (om/build clock-view (:black-clock app)
                                   {:init-state {:master main-control
-                                                :input black-control
-                                                :msg-chan message}}))))))
+                                                :input black-control}}))))))
 
 (om/root
   board-view
